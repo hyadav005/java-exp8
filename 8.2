@@ -1,0 +1,52 @@
+//SQL (employees)
+CREATE TABLE employees (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100),
+  department VARCHAR(50),
+  email VARCHAR(100)
+);
+
+INSERT INTO employees (name, department, email) VALUES
+('John Doe','HR','john@example.com'),
+('Jane Smith','Finance','jane@example.com'),
+('Alice Brown','IT','alice@example.com');
+
+//EmployeesServlet.java
+package com.example.servlet;
+
+import com.example.util.DBUtil;
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.*;
+import java.io.IOException;
+import java.sql.*;
+
+@WebServlet("/employees")
+public class EmployeesServlet extends HttpServlet {
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+          throws ServletException, IOException {
+        resp.setContentType("text/html;charset=UTF-8");
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement("SELECT id, name, department, email FROM employees");
+             ResultSet rs = ps.executeQuery()) {
+
+            StringBuilder html = new StringBuilder();
+            html.append("<h2>Employees</h2>");
+            html.append("<table border='1' cellpadding='6'><tr><th>ID</th><th>Name</th><th>Department</th><th>Email</th></tr>");
+            while (rs.next()) {
+                html.append("<tr>")
+                    .append("<td>").append(rs.getInt("id")).append("</td>")
+                    .append("<td>").append(rs.getString("name")).append("</td>")
+                    .append("<td>").append(rs.getString("department")).append("</td>")
+                    .append("<td>").append(rs.getString("email")).append("</td>")
+                    .append("</tr>");
+            }
+            html.append("</table>");
+            html.append("<p><a href='welcome'>Back</a></p>");
+            resp.getWriter().print(html.toString());
+        } catch (SQLException e) {
+            throw new ServletException(e);
+        }
+    }
+}
