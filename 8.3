@@ -1,0 +1,162 @@
+//SQL (students + attendance)
+CREATE TABLE students (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100)
+);
+
+INSERT INTO students (name) VALUES ('Ravi'), ('Priya'), ('Karan'), ('Meera');
+
+CREATE TABLE attendance (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  student_id INT,
+  attend_date DATE,
+  present BOOLEAN,
+  FOREIGN KEY (student_id) REFERENCES students(id)
+);
+
+//attendance.jsp (form to mark present students)
+<%@ page import="java.sql.*, java.util.*" %>
+<%@ page import="com.example.util.DBUtil" %>
+<%
+    List<Integer> ids = new ArrayList<>();
+    List<String> names = new ArrayList<>();
+    try (Connection conn = DBUtil.getConnection();
+         PreparedStatement ps = conn.prepareStatement("SELECT id, name FROM students ORDER BY name");
+         ResultSet rs = ps.executeQuery()) {
+        while (rs.next()) {
+            ids.add(rs.getInt("id"));
+            names.add(rs.getString("name"));
+        }
+    } catch (Exception e) {
+        out.println("<p>Error loading students: " + e.getMessage() + "</p>");
+    }
+%>
+<html>
+<head><title>Attendance</title></head>
+<body>
+<h2>Mark Attendance</h2>
+<form action="submitAttendance" method="post">
+    <table border="1" cellpadding="6">
+        <tr><th>Present</th><th>Student</th></tr>
+        <%
+            for (int i = 0; i < ids.size(); i++) {
+        %>
+        <tr>
+            <td>
+                <input type="checkbox" name="present" value="<%= ids.get(i) %>">
+            </td>
+            <td><%= names.get(i) %></td>
+        </tr>
+        <%
+            }
+        %>
+    </table>
+    <br>
+    Date: <input type="date" name="date" value="<%= new java.sql.Date(System.currentTimeMillis()) %>" required>
+    <br><br>
+    <button type="submit">Submit Attendance</button>
+</form>
+<p><a href="viewAttendance">View Attendance Records</a></p>
+<p><a href="welcome">Back</a></p>
+</body>
+</html>
+
+// SubmitAttendanceServlet.java
+
+package com.example.servlet;
+
+import com.example.util.DBUtil;
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.*;
+import java.io.IOException;
+import java.sql.*;
+import java.time.LocalDate;
+import java.util.HashSet;
+import java.util.Set;
+
+@WebServlet("/submitAttendance")
+public class SubmitAttendanceServlet extends HttpServlet {
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        String dateStr = req.getParameter("date");
+        LocalDate date = LocalDate.parse(dateStr);
+
+        // IDs of present students (checkbox values)
+        String[] presentIds = req.getParameterValues("present");
+        Set<Integer> presentSet = new HashSet<>();
+        if (presentIds != null) {
+            for (String s : presentIds) presentSet.add(Integer.parseInt(s));
+        }
+
+        // Get all students, then insert attendance for each
+        String selectAll = "SELECT id FROM students";
+        String insert = "INSERT INTO attendance(student_id, attend_date, present) VALUES (?, ?, ?)";
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement psSelect = conn.prepareStatement(selectAll);
+             ResultSet rs = psSelect.executeQuery();
+             PreparedStatement psInsert = conn.prepareStatement(insert)) {
+
+            conn.setAutoCommit(false);
+            while (rs.next()) {
+                int sid = rs.getInt("id");
+                boolean isPresent = presentSet.contains(sid);
+                psInsert.setInt(1, sid);
+                psInsert.setDate(2, Date.valueOf(date));
+                psInsert.setBoolean(3, isPresent);
+                psInsert.addBatch();
+            }
+            psInsert.executeBatch();
+            conn.commit();
+            resp.sendRedirect("viewAttendance");
+        } catch (SQLException e) {
+            throw new ServletException(e);
+        }
+    }
+}
+
+//ViewAttendanceServlet.java
+
+package com.example.servlet;
+
+import com.example.util.DBUtil;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.*;
+import javax.servlet.ServletException;
+import java.io.IOException;
+import java.sql.*;
+
+@WebServlet("/viewAttendance")
+public class ViewAttendanceServlet extends HttpServlet {
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        resp.setContentType("text/html;charset=UTF-8");
+        String sql = "SELECT a.id, s.name, a.attend_date, a.present FROM attendance a JOIN students s ON a.student_id = s.id ORDER BY a.attend_date DESC, s.name";
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            StringBuilder html = new StringBuilder();
+            html.append("<h2>Attendance Records</h2>");
+            html.append("<table border='1' cellpadding='6'><tr><th>ID</th><th>Date</th><th>Student</th><th>Present</th></tr>");
+            while (rs.next()) {
+                html.append("<tr>")
+                    .append("<td>").append(rs.getInt("id")).append("</td>")
+                    .append("<td>").append(rs.getDate("attend_date")).append("</td>")
+                    .append("<td>").append(rs.getString("name")).append("</td>")
+                    .append("<td>").append(rs.getBoolean("present") ? "Yes" : "No").append("</td>")
+                    .append("</tr>");
+            }
+            html.append("</table>");
+            html.append("<p><a href='attendance.jsp'>Back to mark attendance</a></p>");
+            html.append("<p><a href='welcome'>Home</a></p>");
+            resp.getWriter().print(html.toString());
+        } catch (SQLException e) {
+            throw new ServletException(e);
+        }
+    }
+}
+
+//Deployment notes
+src/main/java/com/example/servlet/*.java
+src/main/java/com/example/util/DBUtil.java
+src/main/webapp/login.html
+src/main/webapp/attendance.jsp
+WEB-INF/web.xml (if not using annotations)
